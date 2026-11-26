@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: scamshield
+          POSTGRES_PASSWORD: scamshield
+          POSTGRES_DB: scamshield
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scamshield" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Unit + API tests (SQLite, offline AI)
+        run: pytest -q
+      - name: Migrations apply cleanly on real PostgreSQL + pgvector
+        env:
+          DATABASE_URL: postgresql+asyncpg://scamshield:scamshield@localhost:5432/scamshield
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+      - name: Build Docker image
+        run: docker build -t scamshield:ci .

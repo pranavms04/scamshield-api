@@ -1,0 +1,27 @@
+[project]
+name = "scamshield"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/services/rules.py" = ["E501"]  # regex patterns read better on one line
+"ml/make_seed.py" = ["E501"]        # data, not code
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are designed to be used as defaults
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Security", "fastapi.Path", "fastapi.Body"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "ml", "scripts", "tests"]
+known-third-party = ["alembic"]
