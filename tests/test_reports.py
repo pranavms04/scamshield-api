@@ -25,7 +25,7 @@ def test_report_moderation_and_reputation(client):
     assert r.json()["status"] == "verified"
     # deciding twice is a conflict
     assert client.post(f"/v1/moderation/reports/{report_id}/decision",
-                       json={"status": "rejected"}, headers=mod).status_code == 409
+                       json={"status": "rejected", "note": "Not enough evidence"}, headers=mod).status_code == 409
 
     # same number written differently resolves to the same entity
     rep = client.get("/v1/entities/lookup", params={"type": "phone", "value": "9876543210"}, headers=citizen).json()

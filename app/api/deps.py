@@ -20,11 +20,16 @@ UNAUTHORIZED = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing c
 
 
 async def _user_from_token(token: str, db: AsyncSession) -> User:
+    if len(token) > 2048:
+        raise UNAUTHORIZED
     try:
         payload = decode_access_token(token)
-    except jwt.PyJWTError:
+        user_id = int(payload["sub"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError):  # bad signature, expired, or malformed claims
         raise UNAUTHORIZED from None
-    user = await db.get(User, int(payload["sub"]))
+    if not 1 <= user_id <= 2_147_483_647:
+        raise UNAUTHORIZED
+    user = await db.get(User, user_id)
     if user is None or not user.is_active:
         raise UNAUTHORIZED
     return user
@@ -60,6 +65,8 @@ async def get_client(
     db: AsyncSession = Depends(get_db),
 ) -> Client:
     if api_key:
+        if not api_key.startswith("ss_live_") or len(api_key) > 100:
+            raise UNAUTHORIZED
         key = (await db.execute(select(ApiKey).where(ApiKey.key_hash == hash_api_key(api_key)))).scalar_one_or_none()
         if key is None or not key.is_active:
             raise UNAUTHORIZED

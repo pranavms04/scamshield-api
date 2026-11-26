@@ -33,7 +33,8 @@ Citizen/Moderator ─JWT──▶   │                       ├─▶ Reputati
 
 | Method | Path | Who |
 |---|---|---|
-| POST | `/v1/auth/register`, `/v1/auth/login` | anyone |
+| POST | `/v1/auth/register` (name, email, mobile, password, state, city, terms), `/v1/auth/login` (email or mobile) | anyone |
+| GET/PATCH | `/v1/auth/me` · POST `/v1/auth/change-password` | logged-in user |
 | POST/GET/DELETE | `/v1/api-keys` | logged-in user |
 | POST | `/v1/check` | API key or user |
 | GET | `/v1/entities/lookup` | API key or user |
@@ -67,7 +68,7 @@ Demo logins: `moderator@scamshield.dev` / `admin@scamshield.dev`, password `Chan
 ## Test
 
 ```bash
-pytest -q        # 20 tests, ~5 s, no network needed
+pytest -q        # 74 tests, ~5 s, no network needed
 ruff check .
 ```
 
@@ -78,6 +79,8 @@ CI (GitHub Actions) runs lint and tests, applies the migrations up/down/up on re
 - **Hash, don't store:** API keys are stored as SHA-256 hashes; `/check` logs store a hash of the input, never the private message.
 - **Normalise entities:** `+91 98765-43210` and `09876543210` map to one row, enforced by a unique constraint.
 - **Row locks for moderation:** `SELECT … FOR UPDATE` stops two moderators deciding the same report.
+- **Strict validation:** unknown fields are rejected (no `"role": "admin"` on sign-up), strong-password rules, Indian mobile/state checks, NUL bytes blocked, ids bounded to 32-bit, one 422 format `{detail, errors[{field, message, type}]}`.
+- **Login lockout:** 5 wrong passwords per account (30 per IP) in 15 min → 429; constant-time response for unknown accounts.
 - **Graceful degradation:** if the LLM is unavailable, the API still answers using the rule-based explanation.
 - **Swappable components:** embedder and explainer sit behind interfaces, so tests run offline in seconds.
 

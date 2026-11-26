@@ -1,17 +1,25 @@
-from pydantic import BaseModel, Field, model_validator
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 from app.models.enums import EntityType, ScamType, Verdict
+from app.schemas.common import OptionalMobile, OptionalUpi, OptionalUrl, SafeText, StrictModel
 from app.schemas.report import EntityReputation
 
 
-class CheckRequest(BaseModel):
-    message: str | None = Field(default=None, max_length=2000, examples=[
+class CheckRequest(StrictModel):
+    message: Annotated[SafeText | None, Field(default=None, min_length=2, max_length=2000, examples=[
         "Dear customer your SBI KYC is expired. Update now at http://bit.ly/sbi-kyc or account will be blocked today"
-    ])
-    phone: str | None = Field(default=None, max_length=30)
-    upi_id: str | None = Field(default=None, max_length=100)
-    url: str | None = Field(default=None, max_length=500)
-    explain: bool = Field(default=True, description="Ask the LLM for a plain-language explanation")
+    ])]
+    phone: Annotated[OptionalMobile, Field(examples=["+91 98765 43210"])]
+    upi_id: Annotated[OptionalUpi, Field(examples=["refund.help@ybl"])]
+    url: Annotated[OptionalUrl, Field(examples=["bit.ly/sbi-kyc"])]
+    explain: StrictBool = Field(default=True, description="Ask the LLM for a plain-language explanation")
+
+    @field_validator("message", "phone", "upi_id", "url", mode="before")
+    @classmethod
+    def blank_is_missing(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v
 
     @model_validator(mode="after")
     def at_least_one(self):

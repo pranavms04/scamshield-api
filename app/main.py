@@ -4,7 +4,9 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 import app.models  # noqa: F401  (registers all tables on Base.metadata)
@@ -17,6 +19,7 @@ from app.services.cache import TTLCache
 from app.services.classifier import ScamClassifier
 from app.services.embeddings import build_embedder
 from app.services.llm import build_explainer
+from app.services.login_guard import LoginGuard
 from app.services.ratelimit import SlidingWindowLimiter
 from app.services.risk import RiskEngine
 
@@ -39,6 +42,8 @@ async def lifespan(app: FastAPI):
     )
     app.state.limiter = SlidingWindowLimiter(s.rate_limit_per_minute)
     app.state.check_cache = TTLCache(s.check_cache_seconds)
+    app.state.login_guard = LoginGuard(max_failures=5, window_seconds=900)  # per account
+    app.state.login_ip_guard = LoginGuard(max_failures=30, window_seconds=900)  # per IP (shared NATs are common)
     log.info("startup complete", extra={"extra_fields": {"env": s.environment, "llm": s.llm_provider}})
     yield
     await engine.dispose()
@@ -63,6 +68,21 @@ async def request_logging(request: Request, call_next):
         "request_id": request_id, "method": request.method, "path": request.url.path,
         "status": response.status_code, "ms": round((time.perf_counter() - started) * 1000, 1)}})
     return response
+
+
+def _field(loc) -> str:
+    parts = [str(p) for p in loc if p not in ("body", "query", "path", "header", "form")]
+    return ".".join(parts) or "request"
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """One readable 422 format everywhere: {"detail": "...", "errors": [{"field", "message", "type"}]}."""
+    errors = []
+    for e in exc.errors():
+        msg = str(e.get("msg", "Invalid value")).removeprefix("Value error, ")
+        errors.append({"field": _field(e.get("loc", ())), "message": msg, "type": e.get("type", "value_error")})
+    return JSONResponse(status_code=422, content={"detail": "Validation failed", "errors": errors})
 
 
 for r in (auth.router, reports.router, check.router, analytics.router):
